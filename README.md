@@ -8,7 +8,7 @@
 
 **Useage:**
 - 在sqlmap的目录下执行`python sqlmapapi.py -s`进行监听操作。
-- 运行AutoSqli.py
+- 运行AutoSqli.py `python AutoSqli.py` 参数可通过`-h`查看
 
 **Tips:**
 * 这里要注意的是在代码里自定义搜索关键字：`key='inurl:asp?id='`

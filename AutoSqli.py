@@ -1,20 +1,22 @@
 #!/usr/bin/python
 #-*-coding:utf-8-*-
+from __future__ import absolute_import, print_function
+
 import requests
 import time
 import json
 import threading
 import Queue
-from search.baidu import *
+from search import baidu
+import logging
+from config import LOG, API_URL
 
 
 class AutoSqli(object):
-
     """
     使用sqlmapapi的方法进行与sqlmapapi建立的server进行交互
 
     """
-
     def __init__(self, server='', target='',data = '',referer = '',cookie = ''):
         super(AutoSqli, self).__init__()
         self.server = server
@@ -28,17 +30,22 @@ class AutoSqli(object):
         self.referer = referer
         self.cookie = cookie
         self.start_time = time.time()
+        self.logger = logging.getLogger('app.run')
+        self.logger.info('Creating an instance of AutoSqli for {0}.'.format(self.target))
 
     def task_new(self):
-        self.taskid = json.loads(
-            requests.get(self.server + 'task/new').text)['taskid']
-        #print 'Created new task: ' + self.taskid
-        if len(self.taskid) > 0:
-            return True
-        return False
+        try:
+            self.taskid = json.loads(
+                requests.get(self.server + 'task/new').text)['taskid']
+            #print 'Created new task: ' + self.taskid
+            if len(self.taskid) > 0:
+                return True
+            return False
+        except ConnectionError:
+            self.logging.error("sqlmapapi.py is not running")
 
     def task_delete(self):
-        json_kill=requests.get(self.server + 'task/' + self.taskid + '/delete').text
+        json_kill = requests.get(self.server + 'task/' + self.taskid + '/delete').text
         # if json.loads(requests.get(self.server + 'task/' + self.taskid + '/delete').text)['success']:
         #     #print '[%s] Deleted task' % (self.taskid)
         #     return True
@@ -46,7 +53,7 @@ class AutoSqli(object):
 
     def scan_start(self):
         headers = {'Content-Type': 'application/json'}
-        print "starting to scan "+ self.target +".................."
+        self.logger.debug("Starting to scan "+ self.target +"..................")
         payload = {'url': self.target}
         url = self.server + 'scan/' + self.taskid + '/start'
         t = json.loads(
@@ -74,9 +81,10 @@ class AutoSqli(object):
             #print 'not injection\t'
             pass
         else:
-            f=open('data/injection.txt','a')
+            f = open('data/injection.txt','a')
             f.write(self.target+'\n')
-            print 'injection \t'
+            f.close()
+            self.logger.warning('injection \t')
 
     def option_set(self):
         headers = {'Content-Type': 'application/json'}
@@ -134,28 +142,46 @@ class myThread(threading.Thread):
             objects=self.q.get()
             result=objects.run()
 
-
-        
-if __name__ == '__main__':
-    urls=[]
-    print 'the program starts!'
-    key='inurl:asp?id='
-    pages=3               
-    urls=geturl(key,pages)
+def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-n', '--num', default=4, nargs='?', type=int, dest='num', help="Thread num")
+    parser.add_argument('-p', '--page', default=3, nargs='?', type=int, dest='page', help="Search Page num")
+    parser.add_argument('-d', '--log', default=LOG["filename"], nargs='?', type=str, dest='log', help="The path of debug log")
+    args = parser.parse_args()
+    logger = logging.getLogger('app')
+    logger.setLevel(LOG["level"])
+    fh = logging.FileHandler(args.log)
+    fh.setLevel(LOG["level"])
+    formatter = logging.Formatter(LOG['format'], LOG["datefmt"])
+    fh.setFormatter(formatter)
+    sh = logging.StreamHandler()
+    sh.setLevel(LOG["level"])
+    sh.setFormatter(formatter)
+    logger.addHandler(fh)
+    logger.addHandler(sh)
+    urls = []
+    logger.info('the program starts!')
+    pages = args.page
+    key = 'inurl:asp?id='
+    urls = baidu.geturl(key, pages)
     #print urls
-    workQueue=Queue.Queue()
+    workQueue = Queue.Queue()
     for tar in urls:
-        s = AutoSqli('http://127.0.0.1:8775', tar)
+        s = AutoSqli(API_URL, tar)
         workQueue.put(s)
     threads = []
-    nloops = range(4)   #threads Num
+    nloops = range(args.num)   #threads Num
     for i in nloops:
-        t = myThread(workQueue,i)
+        t = myThread(workQueue, i)
         t.start()
         threads.append(t)
     for i in nloops:
             threads[i].join()
-    print "Exiting Main Thread"
+    logger.info("Exiting Main Thread")
+        
+if __name__ == '__main__':
+    main()
 
 
 
